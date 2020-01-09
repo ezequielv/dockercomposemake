@@ -16,6 +16,8 @@ TARGETS_PHONY := \
  compose-stop stop \
  compose-rm docker-clean \
  recreate-up recreate \
+ \
+ submake_std_builddep \
  # end
 
 # this has an effect on the '+=' used later
@@ -29,6 +31,8 @@ TARGETS_PHONY := \
 TARGETS_FILES :=
 #? unused: ALL_SUBMAKE_STD :=
 ALL_SUBMAKE_STD_VARNAME_PREFS :=
+ALL_SUBMAKE_STD_EXTRADEPS :=
+ALL_TAGIDS_TAGMAPPING :=
 
 # other variables that we'll just react to, but we don't define for the current
 # makefile:
@@ -47,13 +51,108 @@ SRC_FILES_COMMON := $(MAK_THIS_MAKEFILE)
 
 all: compose-up
 
+# done: create a function to return a list without duplicated elements, and maintaining the same order.
+#  done: and have lists like the "hosts" lists de-duplicated using this mechanism (to avoid duplicated wildcard/file matching)
+#  IDEA: MAYBE: use some of the techniques in
+#  'dockercomposemake/gnumake-utils.d/GNUmakefile-util-maptocustomid_extractfromfname'
+#   ref: ifeq ($(filter $(MAK_TOOL_CUR_MAPTO),$(ALL_TAGIDS_ALL)),) ...
+
+define FUNC_STRTOESCAPEDPATTERN
+$(subst $(PERCENTSYMBOL),$(TOKEN_PERCENTSYMBOL),$(1))
+endef
+
+define FUNC_ESCAPEDPATTERNTOSTR
+$(subst $(TOKEN_PERCENTSYMBOL),$(PERCENTSYMBOL),$(1))
+endef
+
+#+ prev: v1: define FUNC_WORDLIST_REMOVEDUPLICATES
+#+ prev: v1: $(strip \
+#+ prev: v1: )$(eval undefine T_WORDLIST_REMOVEDUPLICATES_OUTLIST)$(strip \
+#+ prev: v1: )$(foreach w,$(strip \
+#+ prev: v1:  )$(call FUNC_STRTOESCAPEDPATTERN,$(1)),$(strip \
+#+ prev: v1:  )$(if $(strip \
+#+ prev: v1:   )$(filter $(w),$(T_WORDLIST_REMOVEDUPLICATES_OUTLIST)),$(strip \
+#+ prev: v1:   ),$(strip \
+#+ prev: v1:   )$(eval $(strip \
+#+ prev: v1:    )T_WORDLIST_REMOVEDUPLICATES_OUTLIST += $(w)$(strip \
+#+ prev: v1:   ))$(strip \
+#+ prev: v1:  ))$(strip \
+#+ prev: v1: ))$(strip \
+#+ prev: v1: )$(strip $(strip \
+#+ prev: v1:  )$(call FUNC_ESCAPEDPATTERNTOSTR,$(strip \
+#+ prev: v1:   )$(T_WORDLIST_REMOVEDUPLICATES_OUTLIST)$(strip \
+#+ prev: v1:  ))$(strip \
+#+ prev: v1: ))$(strip \
+#+ prev: v1: )
+#+ prev: v1: endef
+#+ prev: v2: define FUNC_WORDLIST_REMOVEDUPLICATES
+#+ prev: v2: $(strip $(strip \
+#+ prev: v2:  )$(eval undefine T_WORDLIST_REMOVEDUPLICATES_OUTLIST)$(strip \
+#+ prev: v2:  )$(foreach w,$(strip \
+#+ prev: v2:   )$(call FUNC_STRTOESCAPEDPATTERN,$(1)),$(strip \
+#+ prev: v2:   )$(if $(strip \
+#+ prev: v2:    )$(filter $(w),$(T_WORDLIST_REMOVEDUPLICATES_OUTLIST)),$(strip \
+#+ prev: v2:    ),$(strip \
+#+ prev: v2:    )$(eval $(strip \
+#+ prev: v2:     )T_WORDLIST_REMOVEDUPLICATES_OUTLIST += $(w)$(strip \
+#+ prev: v2:    ))$(strip \
+#+ prev: v2:   ))$(strip \
+#+ prev: v2:  ))$(strip \
+#+ prev: v2:  )$(call FUNC_ESCAPEDPATTERNTOSTR,$(strip \
+#+ prev: v2:   )$(T_WORDLIST_REMOVEDUPLICATES_OUTLIST)$(strip \
+#+ prev: v2:  ))$(strip \
+#+ prev: v2: ))
+#+ prev: v2: endef
+#
+# args:
+# $(1): word to be added to the front (can be initially empty);
+# $(2): list tail;;
+define FUNC_WORDLIST_REMOVEDUPLICATES_WORDANDTAILESCAPED
+$(strip $(strip \
+ )$(strip $(1)) $(strip \
+ )$(filter-out $(strip \
+  )$(strip $(1)),$(strip \
+  )$(if $(strip $(2)),$(strip \
+   )$(call FUNC_WORDLIST_REMOVEDUPLICATES_WORDANDTAILESCAPED,$(strip \
+    )$(firstword $(strip $(2))),$(strip \
+    )$(wordlist 2,9999,$(strip $(2)))$(strip \
+   ))$(strip \
+  ))$(strip \
+ ))$(strip \
+))$(strip \
+)
+endef
+#
+# args:
+# $(1): the word list
+#
+# notes:
+#   * the returned string has the same words as the input, but it might not
+#     have the same number of whitespaces (it might have been '$(strip )'-ed
+#     when being processed).
+#
+#? $(call FUNC_WORDLIST_REMOVEDUPLICATES_WORDANDTAILESCAPED,,$(strip $(2)))
+define FUNC_WORDLIST_REMOVEDUPLICATES
+$(strip $(strip \
+ )$(call FUNC_ESCAPEDPATTERNTOSTR,$(strip \
+  )$(call FUNC_WORDLIST_REMOVEDUPLICATES_WORDANDTAILESCAPED,,$(strip \
+   )$(call FUNC_STRTOESCAPEDPATTERN,$(strip \
+    )$(strip $(1))$(strip \
+   ))$(strip \
+  ))$(strip \
+ ))$(strip \
+))$(strip \
+)
+endef
+
 ifeq ($(origin HOSTNAMES_ALL_ORIG),undefined)
  # short flags: -f -s -a -A
- HOSTNAMES_ALL_ORIG := $(strip \
-   $(HOSTNAME) \
-   $(foreach flg,--long --short --alias --all-fqdns,$(strip \
-    )$(shell hostname $(flg)) ) \
-  )
+ HOSTNAMES_ALL_ORIG := $(call FUNC_WORDLIST_REMOVEDUPLICATES,$(strip \
+   )$(HOSTNAME) $(strip \
+   )$(foreach flg,--long --short --alias --all-fqdns,$(strip \
+    )$(shell hostname $(flg))$(strip \
+   ))$(strip \
+  ))
  export HOSTNAMES_ALL_ORIG
 endif
 
@@ -82,15 +181,16 @@ endef
 #   "basename":
 #   HOSTNAME_PROC_IDENTITY \
 #
-HOSTNAMES_ALL := $(strip \
-  $(foreach fnow, \
-   HOSTNAME_PROC_EXTRACTHOSTPART \
-   HOSTNAME_PROC_GETHOSTSWITHOUTDOMAIN \
-   HOSTNAME_PROC_HOSTNAMESDOTSTOHYPHENS \
-   HOSTNAME_PROC_HOSTNAMESDOTSTOUNDERSCORES \
+HOSTNAMES_ALL := $(call FUNC_WORDLIST_REMOVEDUPLICATES,$(strip \
+  )$(foreach fnow, \
+    HOSTNAME_PROC_EXTRACTHOSTPART \
+    HOSTNAME_PROC_GETHOSTSWITHOUTDOMAIN \
+    HOSTNAME_PROC_HOSTNAMESDOTSTOHYPHENS \
+    HOSTNAME_PROC_HOSTNAMESDOTSTOUNDERSCORES \
    ,$(strip \
-    )$(call $(fnow),$(HOSTNAMES_ALL_ORIG)) $(strip \
-  )))
+   )$(call $(fnow),$(HOSTNAMES_ALL_ORIG)) $(strip \
+  ))$(strip \
+ ))
 
 SPACE := $(subst x, ,x)
 TAB := $(subst x,	,x)
@@ -99,6 +199,9 @@ define NEWLINE
 
 
 endef
+
+PERCENTSYMBOL := %
+COMMA := ,
 
 # args:
 # $(1): list of words to make TOKEN_{word} values for
@@ -129,8 +232,10 @@ endef
 # prev: v2: # v1: $(info DEBUG: '$(call EXPR_MAKE_TOKENS,SPACE NEWLINE)')
 # prev: v2: endif
 # v1: #$(eval         $(call EXPR_MAKE_TOKENS,SPACE NEWLINE))
-$(call EVAL_MAKE_TOKENS,SPACE NEWLINE)
+$(call EVAL_MAKE_TOKENS,SPACE TAB NEWLINE)
 #+ $(eval $(foreach tokenid,SPACE NEWLINE,TOKEN_$(tokenid) := __$(tokenid)__$(NEWLINE)) )
+
+$(call EVAL_MAKE_TOKENS,PERCENTSYMBOL)
 
 $(call EVAL_MAKE_TOKENS,FIELDSEP NULL)
 
@@ -299,55 +404,32 @@ $(strip \
 )
 endef
 
-#+ v1: define FUNC_GETALLFILESFORFIRSTWORKINGWORD
-#+ v1: $(subst $(TOKEN_SPACE),$(SPACE),$(firstword $(strip \
-#+ v1:  $(foreach bnow,$(strip $(1)),$(strip \
-#+ v1:   $(subst $(SPACE),$(TOKEN_SPACE),$(strip \
-#+ v1:    $(wildcard $(bnow)) \
-#+ v1:    $(foreach sufnow,.part[-_],$(wildcard $(bnow)$(sufnow)*)) \
-#+ v1:   )) \
-#+ v1:  )) \
-#+ v1: )))
-#+ v1: endef
-#+ v2: define FUNC_GETALLFILESFORFIRSTWORKINGWORD
-#+ v2: $(subst $(TOKEN_SPACE),$(SPACE),$(firstword $(strip \
-#+ v2:  $(foreach bnow,$(strip $(1)),$(strip \
-#+ v2:   $(subst $(SPACE),$(TOKEN_SPACE),$(strip \
-#+ v2:    $(wildcard $(bnow)) \
-#+ v2:    $(foreach sufnow,.part[-_],$(wildcard $(bnow)$(sufnow)*)) \
-#+ v2:   )) \
-#+ v2:  )) \
-#+ v2: )))
-# ref: $$(t_vn_pref)THISHOST := $$(strip \
-# ref:  $$(firstword $$(wildcard $$(patsubst %,$$(t_fn_pref)-host-%,$$(t_hostall)))))
 # args:
 # $(1): filename prefixes: each word is a "basename" for which all possible
 #       names are to be '$(wildcard )'-ed.  Only the files for the first
 #       file-matching word are returned.
 # $(2): [optional] list of directories in which to search for additional files
-define FUNC_GETALLFILESFORFIRSTWORKINGWORD
-$(subst $(TOKEN_SPACE),$(SPACE),$(firstword $(strip \
-   $(foreach bnow,$(strip $(1)),$(strip \
-     $(subst $(SPACE),$(TOKEN_SPACE),$(strip \
-      $(foreach t_dir_orig,$(sort $(strip \
-         )$(TOKEN_NULL) $(strip \
-         )$(strip $(2)) $(strip \
-         )$(strip $(ALL_COMMONANDHOST_PARTS_DIRS)) $(strip \
-        )),$(strip $(strip \
-         )$(wildcard $(strip \
-          )$(foreach t_wcbasename,$(strip $(strip \
-            )$(bnow) $(strip \
-            )$(foreach t_sufnow,$(strip $(strip \
-              ).part[-_] $(strip \
-             )),$(strip \
-             )$(bnow)$(t_sufnow)*$(strip \
-            ))$(strip \
+define FUNC_GETALLFILESFORALLBASENAMES_ONETOKWORDPERBASENAME
+$(strip $(strip \
+ )$(foreach bnow,$(strip $(1)),$(strip $(strip \
+   )$(subst $(SPACE),$(TOKEN_SPACE),$(strip \
+    $(foreach t_dir_orig,$(sort $(strip \
+       )$(TOKEN_NULL) $(strip \
+       )$(strip $(2)) $(strip \
+       )$(strip $(ALL_COMMONANDHOST_PARTS_DIRS)) $(strip \
+      )),$(strip $(strip \
+       )$(wildcard $(strip \
+        )$(foreach t_wcbasename,$(strip $(strip \
+          )$(bnow) $(strip \
+          )$(foreach t_sufnow,$(strip $(strip \
+            ).part[-_] $(strip \
            )),$(strip \
-           )$(strip \
-            )$(call FUNC_GETDIRPREFANDSEPARATOR,$(t_dir_orig))$(strip \
-            )$(t_wcbasename)$(strip \
+           )$(bnow)$(t_sufnow)*$(strip \
           ))$(strip \
-         ))$(strip \
+         )),$(strip \
+         )$(strip \
+          )$(call FUNC_GETDIRPREFANDSEPARATOR,$(t_dir_orig))$(strip \
+          )$(t_wcbasename)$(strip \
         ))$(strip \
        ))$(strip \
       ))$(strip \
@@ -359,6 +441,262 @@ $(subst $(TOKEN_SPACE),$(SPACE),$(firstword $(strip \
 ))$(strip \
 )
 endef
+
+# args:
+# $(1): "tokenised" (as per
+#       FUNC_GETALLFILESFORALLBASENAMES_ONETOKWORDPERBASENAME) words;
+#
+# returns:
+# whitespace-separated untokenised words;
+#
+# notes:
+#
+#   * there will be no way to identify which "tokenised" word each resulting
+#     word came from.
+#
+#   * the returned list would keep the original word order, and it will be free
+#     from duplicates (as per '$(call FUNC_WORDLIST_REMOVEDUPLICATES )').
+#
+define FUNC_GETFILESLISTFROMTOKWORDS
+$(strip $(strip \
+ )$(call FUNC_WORDLIST_REMOVEDUPLICATES,$(strip \
+  )$(subst $(TOKEN_SPACE),$(SPACE),$(strip \
+   )$(strip $(1))$(strip \
+  ))$(strip \
+ ))$(strip \
+))$(strip \
+)
+endef
+
+#+ v1: define FUNC_GETALLFILESFORFIRSTMATCHINGBASENAME
+#+ v1: $(subst $(TOKEN_SPACE),$(SPACE),$(firstword $(strip \
+#+ v1:  $(foreach bnow,$(strip $(1)),$(strip \
+#+ v1:   $(subst $(SPACE),$(TOKEN_SPACE),$(strip \
+#+ v1:    $(wildcard $(bnow)) \
+#+ v1:    $(foreach sufnow,.part[-_],$(wildcard $(bnow)$(sufnow)*)) \
+#+ v1:   )) \
+#+ v1:  )) \
+#+ v1: )))
+#+ v1: endef
+#+ v2: define FUNC_GETALLFILESFORFIRSTMATCHINGBASENAME
+#+ v2: $(subst $(TOKEN_SPACE),$(SPACE),$(firstword $(strip \
+#+ v2:  $(foreach bnow,$(strip $(1)),$(strip \
+#+ v2:   $(subst $(SPACE),$(TOKEN_SPACE),$(strip \
+#+ v2:    $(wildcard $(bnow)) \
+#+ v2:    $(foreach sufnow,.part[-_],$(wildcard $(bnow)$(sufnow)*)) \
+#+ v2:   )) \
+#+ v2:  )) \
+#+ v2: )))
+#+ v3: define FUNC_GETALLFILESFORFIRSTMATCHINGBASENAME
+#+ v3: $(subst $(TOKEN_SPACE),$(SPACE),$(firstword $(strip \
+#+ v3:    $(foreach bnow,$(strip $(1)),$(strip \
+#+ v3:      $(subst $(SPACE),$(TOKEN_SPACE),$(strip \
+#+ v3:       $(foreach t_dir_orig,$(sort $(strip \
+#+ v3:          )$(TOKEN_NULL) $(strip \
+#+ v3:          )$(strip $(2)) $(strip \
+#+ v3:          )$(strip $(ALL_COMMONANDHOST_PARTS_DIRS)) $(strip \
+#+ v3:         )),$(strip $(strip \
+#+ v3:          )$(wildcard $(strip \
+#+ v3:           )$(foreach t_wcbasename,$(strip $(strip \
+#+ v3:             )$(bnow) $(strip \
+#+ v3:             )$(foreach t_sufnow,$(strip $(strip \
+#+ v3:               ).part[-_] $(strip \
+#+ v3:              )),$(strip \
+#+ v3:              )$(bnow)$(t_sufnow)*$(strip \
+#+ v3:             ))$(strip \
+#+ v3:            )),$(strip \
+#+ v3:            )$(strip \
+#+ v3:             )$(call FUNC_GETDIRPREFANDSEPARATOR,$(t_dir_orig))$(strip \
+#+ v3:             )$(t_wcbasename)$(strip \
+#+ v3:           ))$(strip \
+#+ v3:          ))$(strip \
+#+ v3:         ))$(strip \
+#+ v3:        ))$(strip \
+#+ v3:       ))$(strip \
+#+ v3:      ))$(strip \
+#+ v3:     ))$(strip \
+#+ v3:    ))$(strip \
+#+ v3:   ))$(strip \
+#+ v3:  ))$(strip \
+#+ v3: ))$(strip \
+#+ v3: )
+#+ v3: endef
+# ref: $$(t_vn_pref)THISHOST := $$(strip \
+# ref:  $$(firstword $$(wildcard $$(patsubst %,$$(t_fn_pref)-host-%,$$(t_hostall)))))
+# args:
+# $(1): filename prefixes: each word is a "basename" for which all possible
+#       names are to be '$(wildcard )'-ed.  Only the files for the first
+#       file-matching word are returned.
+# $(2): [optional] list of directories in which to search for additional files
+define FUNC_GETALLFILESFORFIRSTMATCHINGBASENAME
+$(strip $(strip \
+ )$(call FUNC_GETFILESLISTFROMTOKWORDS,$(strip \
+  )$(firstword $(strip \
+   )$(call FUNC_GETALLFILESFORALLBASENAMES_ONETOKWORDPERBASENAME,$(strip \
+    )$(1),$(strip \
+    )$(2)$(strip \
+   ))$(strip \
+  ))$(strip \
+ ))$(strip \
+))$(strip \
+)
+endef
+
+# args:
+# $(1): filename prefixes: each word is a "basename" for which all possible
+#       names are to be '$(wildcard )'-ed.
+# $(2): [optional] list of directories in which to search for additional files
+define FUNC_GETALLFILESFORALLMATCHINGBASENAMES
+$(strip $(strip \
+ )$(call FUNC_GETFILESLISTFROMTOKWORDS,$(strip \
+  )$(call FUNC_GETALLFILESFORALLBASENAMES_ONETOKWORDPERBASENAME,$(strip \
+   )$(1),$(strip \
+   )$(2)$(strip \
+  ))$(strip \
+ ))$(strip \
+))$(strip \
+)
+endef
+
+# FUNC_TAGMAPPING_* macros {{{
+
+# example src mapping:
+#  b:c,e a:b,c d:z e:c
+# expanding:
+#  * 'a d'  ->
+#             'a'
+#               'b'
+#                 'c'
+#                 'e'
+#                   'c'
+#               'c'
+#             'd'
+#               'z'
+#           -> 'a b c e c c d z' (with duplicates)
+#             -> 'a b c e d z' (deduplicated, keep first)
+#             -> 'a b e c d z' (deduplicated, keep last)
+#
+
+#-? ... define FUNC_TAGMAPPING_EXPANDONEMAPPING
+#-? ... $(strip $(strip \
+#-? ...  )$(firstword $(strip \
+#-? ...   )$(subst :,$(SPACE),$(strip $(2)))$(strip \
+#-? ...  ))$(strip \
+#-? ...  ):$(strip \
+#-? ...  )$(foreach ts,$(strip \
+#-? ...   )$(subst $(COMMA),$(SPACE),$(strip \
+#-? ...    )$(lastword $(strip \
+#-? ...     )$(subst :,$(SPACE),$(strip $(2)))$(strip \
+#-? ...    ))$(strip \
+#-? ...   ))$(strip \
+#-? ...   ),$(strip \
+#-? ...   )$(call FUNC_TAGMAPPING_GETALLSOURCESFORTAGID,$(strip \
+#-? ...    )$(1),$(strip \
+#-? ...    )$(ts)$(strip \
+#-? ...   ))$(strip \
+#-? ...  ))$(strip \
+#-? ... ))$(strip \
+#-? ... )
+#-? ... endef
+
+#? prev: v1: # args:
+#? prev: v1: # $(1): mapping complete list;
+#? prev: v1: # $(2): tagid to "expand" using the mapping list in $(1);
+#? prev: v1: #
+#? prev: v1: # MAYBE: create another function to leave "most basic" (depended upon) to the end of the list:
+#? prev: v1: # FUNC_WORDLIST_REMOVEDUPLICATES_KEEPLAST
+#? prev: v1: #
+#? prev: v1: #   * MAYBE: TODO: and rename: FUNC_WORDLIST_REMOVEDUPLICATES ->
+#? prev: v1: #     FUNC_WORDLIST_REMOVEDUPLICATES_KEEPFIRST
+#? prev: v1: #
+#? prev: v1: define FUNC_TAGMAPPING_EXPANDTAGID
+#? prev: v1: $(strip $(strip \
+#? prev: v1:  )$(call FUNC_WORDLIST_REMOVEDUPLICATES,$(strip \
+#? prev: v1:   )$(2) $(strip \
+#? prev: v1:   )$(foreach tme,$(strip \
+#? prev: v1:    )$(filter $(strip \
+#? prev: v1:     )$(strip $(2)):%,$(strip \
+#? prev: v1:     )$(strip $(1))$(strip \
+#? prev: v1:    ))$(strip \
+#? prev: v1:    ),$(strip \
+#? prev: v1:    )$(foreach ts,$(strip \
+#? prev: v1:     )$(subst $(COMMA),$(SPACE),$(strip \
+#? prev: v1:      )$(lastword $(strip \
+#? prev: v1:       )$(subst :,$(SPACE),$(strip $(tme)))$(strip \
+#? prev: v1:      ))$(strip \
+#? prev: v1:     ))$(strip \
+#? prev: v1:     ),$(strip \
+#? prev: v1:     )$(call FUNC_TAGMAPPING_EXPANDTAGID,$(strip \
+#? prev: v1:      )$(1),$(strip \
+#? prev: v1:      )$(ts)$(strip \
+#? prev: v1:     ))$(strip \
+#? prev: v1:    ))$(strip \
+#? prev: v1:   ))$(strip \
+#? prev: v1:  ))$(strip \
+#? prev: v1: ))$(strip \
+#? prev: v1: )
+#? prev: v1: endef
+
+# args:
+# $(1): mapping complete list;
+# $(2): tagid to "expand" using the mapping list in $(1);
+#
+# Returns the expanded list of tags for the $(2), but leaves duplicates in the
+# result.  These are handled in our public caller function(s).
+define FUNC_TAGMAPPING_EXPANDTAGID_STEP
+$(strip $(strip \
+ )$(2) $(strip \
+ )$(foreach tme,$(strip \
+  )$(filter $(strip \
+   )$(strip $(2)):%,$(strip \
+   )$(strip $(1))$(strip \
+  ))$(strip \
+  ),$(strip \
+  )$(foreach ts,$(strip \
+   )$(subst $(COMMA),$(SPACE),$(strip \
+    )$(lastword $(strip \
+     )$(subst :,$(SPACE),$(strip $(tme)))$(strip \
+    ))$(strip \
+   ))$(strip \
+   ),$(strip \
+   )$(call FUNC_TAGMAPPING_EXPANDTAGID_STEP,$(strip \
+    )$(1),$(strip \
+    )$(ts)$(strip \
+   ))$(strip \
+  ))$(strip \
+ ))$(strip \
+))$(strip \
+)
+endef
+
+# args:
+# $(1): mapping complete list;
+# $(2): list of tagids to "expand" using the mapping list in $(1);
+#
+# MAYBE: create another function to leave "most basic" (depended upon) to the end of the list:
+# FUNC_WORDLIST_REMOVEDUPLICATES_KEEPLAST
+#
+#   * MAYBE: TODO: and rename: FUNC_WORDLIST_REMOVEDUPLICATES ->
+#     FUNC_WORDLIST_REMOVEDUPLICATES_KEEPFIRST
+#
+define FUNC_TAGMAPPING_EXPANDTAGIDS
+$(strip $(strip \
+ )$(call FUNC_WORDLIST_REMOVEDUPLICATES,$(strip \
+  )$(foreach td,$(strip \
+    )$(strip $(2))$(strip \
+   ),$(strip \
+    )$(call FUNC_TAGMAPPING_EXPANDTAGID_STEP,$(strip \
+     )$(1),$(strip \
+     )$(td)$(strip \
+    ))$(strip \
+   )$(strip \
+  ))$(strip \
+ ))$(strip \
+))$(strip \
+)
+endef
+
+# }}}
 
 # TODO: implement this using the flags defined below (for
 # EXPR_CALCFILESCOMMONANDHOST)
@@ -495,6 +833,8 @@ endef
 #       * common flags:
 #        'h': require a hostname-based name to be present (this would include
 #             additional hostnames given in $(4)).
+#        'H': like 'h', but only enforce when there are no known sub-make
+#             invocations to be made.
 #       * when a target is created:
 #        'A': get rid of every comment (not just the "recognised" ones);
 #        'B': get rid of blank lines;
@@ -510,56 +850,6 @@ endef
 # $(6): [optional] "end-of-line" comment prefixes;
 #       NOTE: if the 's' flag was specified, then this is not needed.
 #
-#+ v2: # output:
-#+ v2: # * defines the follwing variables:
-#+ v2: #    $(1)ALL
-#+ v2: #     $(1)COMMON_PRE
-#+ v2: #     $(1)THISHOST
-#+ v2: #     $(1)COMMON_POST
-#+ v3: # args:
-#+ v3: # $(1): variables prefix (example: "FILE_ENV_SRC_")
-#+ v3: # $(2): common file prefix (example: ".env")
-#+ v3: # $(3): [optional] if non-empty, it creates a target that depends on the
-#+ v3: #       '$(1)ALL' variable.
-#+ v3: #       If it is '+', then $(2) is used as a default target filename.
-#+ v3: #       Otherwise, it is the target filename.
-#+ v3: # $(4): [optional] additional "hostnames" (for example "fallback default")
-#+ v3: #       to be used;
-#+ v3: # $(5): [optional] flags (default: empty)
-#+ v3: #       * common flags:
-#+ v3: #        'h': require a hostname-based name to be present (this would include
-#+ v3: #             additional hostnames given in $(4)).
-#+ v3: #       * when a target is created:
-#+ v3: #        'A': get rid of every comment (not just the "recognised" ones);
-#+ v3: #        'B': get rid of blank lines;
-#+ v3: #        'i': add information (for each include file) comments;
-#+ v3: #        's': comments use the standard script "whitespace hash to end of line"
-#+ v3: #             script convention;
-#+ v3: #        'v': keep 'vi'/'vim' sensitive content (usually inside comments);
-#+ v3: #         * 'vi'/'vim' "modelines";
-#+ v3: #        TODO: implement some or all of the following
-#+ v3: #        'C': get rid of recognised comments:
-#+ v3: #         * 'vi'/'vim' "modelines";
-#+ v3: # TODO: implement the following
-#+ v3: # $(6): [optional] "end-of-line" comment prefixes;
-#+ v3: #       NOTE: if the 's' flag was specified, then this is not needed.
-#+ v3: #
-#+ v4: # additional input(s):
-#+ v4: #  * $(1)SUBMAKE_STD
-#+ v4: #   * for each of these files, $(MAKE) will be run with some of the same
-#+ v4: #     variable values used in *this* makefile (to be defined);
-#+ v4: #     NOTE: this uses '$(1)SUBMAKE_PHONYTARGETNAME' (see below);
-#+ v4: #  * $(1)SUBMAKE_PHONYTARGETNAME
-#+ v4: # output:
-#+ v4: # * defines the follwing variables:
-#+ v4: #    $(1)ALL
-#+ v4: #     $(1)COMMON
-#+ v4: #     $(1)THISHOST
-#+ v4: # * if $(3) is non-empty, then:
-#+ v4: #  * a target file based on the value of $(3) is added to 'TARGETS_FILES';
-#+ v4: #  * a rule based on $(1)ALL that 'cat's every file, catering for files not
-#+ v4: #    ending with a newline.  This means that it is possible for this rule to
-#+ v4: #    create a file with empty lines between source files.
 # additional input(s):
 #  * $(1)SUBMAKE_STD
 #   * for each of these files, $(MAKE) will be run with some of the same
@@ -575,6 +865,7 @@ endef
 #    $(1)SRC_ALL
 #     $(1)SRC_COMMON
 #     $(1)SRC_THISHOST
+#     $(1)SRC_THISTAGID
 # * if $(3) is non-empty, then:
 #  * a target file based on the value of $(3) is added to 'TARGETS_FILES';
 #  * a rule based on $(1)SRC_ALL that 'cat's every file, catering for files not
@@ -584,11 +875,11 @@ define EXPR_CALCFILESCOMMONANDHOST
 t_vn_pref    := $$(strip $(1))
 t_fn_pref    := $$(strip $(2))
 t_targetfile := $$(strip $(3))
-#+ prev: v1: t_hostall    := $$(strip $$(HOSTNAMES_ALL) $(4))
 t_hostall    := $$(strip $(4))
-#+ prev: v1: t_opts       := $$(strip $$(5))
 t_opts       := $$(strip $(5))
-t_tgtcommenteolstr := $$(strip $$(6))
+t_tgtcommenteolstr := $$(strip $(6))
+# possibly to be taken from parameters, too
+t_tagidsall := +
 
 ifeq ($$(t_fn_pref),+)
  t_fn_pref := $$(strip $$($$(t_vn_pref)SRC_COMP_BASE))
@@ -604,7 +895,19 @@ endif
 ifeq ($$(t_hostall),+)
  t_hostall := $$(strip $$($$(t_vn_pref)HOSTNAMES))
 endif
-t_hostall += $$(strip $$(HOSTNAMES_ALL))
+t_hostall := $$(strip $$(t_hostall) $$(HOSTNAMES_ALL))
+t_hostall := $$(call FUNC_WORDLIST_REMOVEDUPLICATES,$$(t_hostall))
+
+ifeq ($$(t_tagidsall),+)
+ t_tagidsall := $$(strip $$($$(t_vn_pref)ALL_TAGIDS))
+endif
+#+ prev: v1: t_tagidsall := $$(strip $$(t_tagidsall) $$(ALL_TAGIDS_ALL))
+t_tagidsall := $$(strip \
+  )$$(call FUNC_TAGMAPPING_EXPANDTAGIDS,$$(strip \
+   )$$(ALL_TAGIDS_TAGMAPPING),$$(strip \
+   )$$(t_tagidsall) $$(ALL_TAGIDS_ALL)$$(strip \
+  ))$$(strip \
+ )
 
 ifeq ($$(t_opts),+)
  t_opts := $$(strip $$($$(t_vn_pref)CALCFILESCOMMONANDHOST_OPTIONS))
@@ -619,31 +922,12 @@ ifneq ($$(VERBOSE),)
  $$(info INFO: src filenames prefix: '$$(t_fn_pref)')
  $$(info INFO: optional target filename: '$$(t_targetfile)')
  $$(info INFO: additional hostnames to consider: '$$(t_hostall)')
- $$(info INFO: smart cat options flags: '$$(t_opts)')
+ $$(info INFO: (smart cat/own) options flags (pre/orig): '$$(t_opts)')
+ $$(info INFO: active tagids for this variable prefix: '$$(t_tagidsall)')
 endif
 
-#+ v1: #+ $$(t_vn_pref)COMMON_PRE  := $$(firstword $$(wildcard $$(t_fn_pref)-common-pre))
-#+ v1: #+ $$(t_vn_pref)COMMON_POST := $$(firstword $$(wildcard $$(t_fn_pref)-common-post))
-#+ v1: #+ $$(t_vn_pref)THISHOST := $$(strip \
-#+ v1: #+  $$(firstword $$(wildcard $$(patsubst %,$$(t_fn_pref)-host-%,$$(t_hostall)))))
-#+ v1: $$(t_vn_pref)COMMON_PRE  := $(strip \
-#+ v1:  $$(call FUNC_GETALLFILESFORFIRSTWORKINGWORD,$$(t_fn_pref)-common-pre))
-#+ v1: $$(t_vn_pref)COMMON_POST := $(strip \
-#+ v1:  $$(call FUNC_GETALLFILESFORFIRSTWORKINGWORD,$$(t_fn_pref)-common-post))
-#+ v1: #? $$(t_vn_pref)LOCAL_PRE  := $(strip \
-#+ v1: #?  $$(call FUNC_GETALLFILESFORFIRSTWORKINGWORD,$$(t_fn_pref)-local-pre))
-#+ v1: #? $$(t_vn_pref)LOCAL_POST := $(strip \
-#+ v1: #?  $$(call FUNC_GETALLFILESFORFIRSTWORKINGWORD,$$(t_fn_pref)-local-post))
-#+ v1: $$(t_vn_pref)THISHOST := $$(strip \
-#+ v1:  $$(call FUNC_GETALLFILESFORFIRSTWORKINGWORD,$$(strip \
-#+ v1:   $$(patsubst %,$$(t_fn_pref)-host-%,$$(t_hostall)))))
-#+ v2: $$(t_vn_pref)SRC_COMMON  := $(strip \
-#+ v2:  $$(call FUNC_GETALLFILESFORFIRSTWORKINGWORD,$$(t_fn_pref)-common))
-#+ v2: $$(t_vn_pref)SRC_THISHOST := $$(strip \
-#+ v2:  $$(call FUNC_GETALLFILESFORFIRSTWORKINGWORD,$$(strip \
-#+ v2:   $$(patsubst %,$$(t_fn_pref)-host-%,$$(t_hostall)))))
 $$(t_vn_pref)SRC_COMMON := $(strip \
- $$(call FUNC_GETALLFILESFORFIRSTWORKINGWORD,$$(strip $$(strip \
+ $$(call FUNC_GETALLFILESFORFIRSTMATCHINGBASENAME,$$(strip $$(strip \
    )$$(t_fn_pref)-common $$(strip \
   )),$$(strip $$(strip \
    )$$($$(t_vn_pref)COMMONANDHOST_PARTS_DIRS) $$(strip \
@@ -651,8 +935,16 @@ $$(t_vn_pref)SRC_COMMON := $(strip \
  ))$$(strip \
 ))
 $$(t_vn_pref)SRC_THISHOST := $$(strip \
- $$(call FUNC_GETALLFILESFORFIRSTWORKINGWORD,$$(strip $$(strip \
+ $$(call FUNC_GETALLFILESFORFIRSTMATCHINGBASENAME,$$(strip $$(strip \
    )$$(patsubst %,$$(t_fn_pref)-host-%,$$(t_hostall)) $$(strip \
+  )),$$(strip $$(strip \
+   )$$($$(t_vn_pref)COMMONANDHOST_PARTS_DIRS) $$(strip \
+  ))$$(strip \
+ ))$$(strip \
+))
+$$(t_vn_pref)SRC_THISTAGID := $$(strip \
+ $$(call FUNC_GETALLFILESFORALLMATCHINGBASENAMES,$$(strip $$(strip \
+   )$$(patsubst %,$$(t_fn_pref)-tagid-%,$$(t_tagidsall)) $$(strip \
   )),$$(strip $$(strip \
    )$$($$(t_vn_pref)COMMONANDHOST_PARTS_DIRS) $$(strip \
   ))$$(strip \
@@ -662,67 +954,48 @@ $$(t_vn_pref)SRC_THISHOST := $$(strip \
 ifneq ($$(VERBOSE),)
  $$(info INFO: '$$(t_fn_pref)'-prefixed file(s) (common): '$$($$(t_vn_pref)SRC_COMMON)')
  $$(info INFO: '$$(t_fn_pref)'-prefixed file(s) for this host: '$$($$(t_vn_pref)SRC_THISHOST)')
+ $$(info INFO: '$$(t_fn_pref)'-prefixed file(s) for the current tagid: '$$($$(t_vn_pref)SRC_THISTAGID)')
+endif
+
+ifneq ($$(VERBOSE),)
+ $$(info INFO: $$(t_vn_pref)SUBMAKE_STD: '$$($$(t_vn_pref)SUBMAKE_STD)')
+endif
+#
+# TODO: check whether these variables are expected to be defined, or if they
+# happen to be defined later (through other macros).
+# if there are no sub-make invocations to be had, we will enforce the 'H' flag
+# as 'h' normally is.
+ifeq ($$(strip $$($$(t_vn_pref)SUBMAKE_STD)),)
+ t_opts := $$(subst H,h,$$(t_opts))
+endif
+
+ifneq ($$(VERBOSE),)
+ $$(info INFO: (smart cat/own) options flags (post): '$$(t_opts)')
 endif
 
 # (optionally) complain if there is no 'env' file for this host
 ifneq ($$(findstring h,$$(t_opts)),)
- ifeq ($$($$(t_vn_pref)SRC_THISHOST),)
-  $$(error could not find an '$$(t_fn_pref)-host-*' file for this host for any of these hostnames: $$(t_hostall))
+ ifeq ($$(strip $$($$(t_vn_pref)SRC_THISHOST)$$($$(t_vn_pref)SRC_THISTAGID)),)
+  $$(error could not find neither a '$$(t_fn_pref)-host-*' file for this host for any of these hostnames: '$$(t_hostall)', nor a '$$(t_fn_pref)-tagid-*' file for any of these tagids: '$$(t_tagidsall)'.)
  endif
 endif
 
-#+ v1: #? $$(t_vn_pref)ALL := $$(strip \
-#+ v1: #?  $$($$(t_vn_pref)LOCAL_PRE) \
-#+ v1: #?  $$($$(t_vn_pref)COMMON_PRE) \
-#+ v1: #?  $$($$(t_vn_pref)THISHOST) \
-#+ v1: #?  $$($$(t_vn_pref)COMMON_POST) \
-#+ v1: #?  $$($$(t_vn_pref)LOCAL_POST) \
-#+ v1: #? )
-#+ v1: $$(t_vn_pref)ALL := $$(strip \
-#+ v1:  $$($$(t_vn_pref)COMMON_PRE) \
-#+ v1:  $$($$(t_vn_pref)THISHOST) \
-#+ v1:  $$($$(t_vn_pref)COMMON_POST) \
-#+ v1: )
 $$(t_vn_pref)SRC_ALL := $$(strip \
  $$(call FUNC_WORDS_SORTBYPARTNUMBER,$$(strip \
   $$($$(t_vn_pref)SRC_COMMON) \
   $$($$(t_vn_pref)SRC_THISHOST) \
+  $$($$(t_vn_pref)SRC_THISTAGID) \
   $$($$(t_vn_pref)SUBMAKE_STD) \
  ),$$(strip \
  .part- .part_ \
  ),99,b) \
  )
 
-#? unfinished: ifneq ($$(strip $$($$(t_vn_pref)SUBMAKE_STD)),)
-#? unfinished:  t_targetphonyname := $$(strip $$($$(t_vn_pref)SUBMAKE_PHONYTARGETNAME))
-#? unfinished:  ifneq ($$(VERBOSE),)
-#? unfinished:   $$(info INFO: phony target to update: '$$(t_targetphonyname)')
-#? unfinished:  endif
-#? unfinished:  # TODO: create rules to make these dependencies (a '$$(foreach .. )' producing
-#? unfinished:  # the rules?)
-#? unfinished:  #          (
-#? unfinished:  # prev: #? )$$($$(t_vn_pref)SUBMAKE_PHONYTARGETNAME)$(strip \
-#? unfinished:  #          )
-#? unfinished:  $$(foreach fdy,$$(strip \
-#? unfinished:    $$($$(t_vn_pref)SUBMAKE_STD) \
-#? unfinished:   ),$$(strip \
-#? unfinished:   )$$(fdy) :$(NEWLINE)$(strip \
-#? unfinished:    )$(TAB)@$$(MAKE) -C $$(dir $$@) $(strip \
-#? unfinished:     )$$(t_vn_pref)TARGET='$$(notdir $$@)' $(strip \
-#? unfinished:     )$$(t_targetphonyname)$(strip \
-#? unfinished:     )$(NEWLINE)$(strip \
-#? unfinished:   ).PRECIOUS: $$(fdy)$(NEWLINE)$(strip \
-#? unfinished:  ))
-#? unfinished:  ALL_SUBMAKE_STD += $$($$(t_vn_pref)SUBMAKE_STD)
-#? unfinished: endif
 ifneq ($$(strip $$($$(t_vn_pref)SUBMAKE_STD)),)
  ALL_SUBMAKE_STD_VARNAME_PREFS += $$(t_vn_pref)
 endif
 
 ifneq ($$(t_targetfile),)
- #+ prev: v1: ifeq ($$(t_targetfile),+)
- #+ prev: v1:  t_targetfile := $$(t_fn_pref)
- #+ prev: v1: endif
  TARGETS_FILES += $$(t_targetfile)
  ifneq ($$(VERBOSE),)
   $$(info INFO: current target file: '$$(t_targetfile)')
@@ -736,38 +1009,6 @@ ifneq ($$(t_targetfile),)
   )$$($$(t_vn_pref)SRC_ALL)$$(strip \
   ))
 
- #- v2: t_srcfiles_data := $$(strip $$($$(t_vn_pref)ALL))
- #- v2: #+/- $$(t_targetfile): $$($$(t_vn_pref)ALL) $$(SRC_FILES_COMMON)
- #- v2: #+/-	@$$(info creating file '$$@' from $$(strip $$+) . . .)$$(strip \
- #- v2: #+/-		){ $$(foreach f,$$+,cat $$(f) && echo &&) : ; } > $$@ || $$(strip \
- #- v2: #+/-		){ rm -vf $$@ ; }
- #- v2: $$(t_targetfile): $$(t_srcfiles_data) $$(SRC_FILES_COMMON)
- #- v2:	@$$(info creating file '$$@' from $$(t_srcfiles_data) . . .)$$(strip \
- #- v2:		){ $$(foreach f,$$(t_srcfiles_data),cat $$(f) && echo &&) : ; } > $$@ $$(strip \
- #- v2:		)|| { rm -vf $$@ ; }
- #+ v3: ){ $$(foreach f,$$(filter-out $$(SRC_FILES_COMMON),$$+),cat $$(f) && echo &&) : ; } > $$@ $$(strip \
- #? v4: $$(t_targetfile): $$(strip $$($$(t_vn_pref)SRC_ALL)) $$(SRC_FILES_COMMON)
- #? v4: $$($$(info creating file '$$@' from $$(filter-out $$(SRC_FILES_COMMON),$$+) . . .)$$(strip \
- #? v4: $$(  )$$(call CMD_CATALLFILES_SMART,$$(strip \
- #? v4: $$(   )$$(filter-out $$(SRC_FILES_COMMON),$$+),$$(strip \
- #? v4: $$(   )$$@,$(strip $(5)),$(6)$$(strip \
- #? v4: $$(  )) $$(strip \
- #? v4: $$(  )|| { rm -vf $$@ ; false ; }$$(strip \
- #? v4: $$(  )
- #-? v5: $$(t_targetfile): $$(strip $$($$(t_vn_pref)SRC_ALL)) $$(SRC_FILES_COMMON)
- #-? v5:	$$(info creating file '$$@' from $$(filter-out $$(SRC_FILES_COMMON),$$+) . . .)$$(strip \
- #-? v5:		)$$(call CMD_CATALLFILES_SMART,$$(strip \
- #-? v5:		 )$$(filter-out $$(SRC_FILES_COMMON),$$+),$$(strip \
- #-? v5:		 )$$@,$$(strip $$(t_opts)),$$(t_tgtcommenteolstr)$$(strip \
- #-? v5:		)) $$(strip \
- #-? v5:		)|| { rm -vf $$@ ; false ; }$$(strip \
- #-? v5:		)
- # testing: )$$(info cmd: $$(strip \
- # testing: )
- #
- #? $$(eval $$(strip \
- #?  )$$(strip \
- #? ))
  # NOTE: we can't use variables whose name depend on re-assigned variables,
  # like $(t_vn_pref), we have to use $(1), which is expanded at '$(call )'
  # time, as recipes are evaluated at the point where they're executed, not when
@@ -784,19 +1025,34 @@ ifneq ($$(t_targetfile),)
  # args:
  # $$(1): $$@ in the rule
  # $$(2): $$+ in the rule
+ #+ prev: v1: $(1)FUNC_RULE_TARGET_INTERNAL_CMD = $$(strip \
+ #+ prev: v1:  $$(info creating file '$$(1)' from $$(strip \
+ #+ prev: v1:   )$$(call $(1)FUNC_RULE_TARGET_INTERNAL_GET_SRC_FILES,$$(2)) . . .$$(strip \
+ #+ prev: v1:  ))$$(strip \
+ #+ prev: v1:   )$$(call CMD_CATALLFILES_SMART,$$(strip \
+ #+ prev: v1:    )$$(call $(1)FUNC_RULE_TARGET_INTERNAL_GET_SRC_FILES,$$(2)),$$(strip \
+ #+ prev: v1:    )$$(1),$$(strip \
+ #+ prev: v1:    )$$($(1)RULE_TARGET_INTERNAL_VAL_OPTS),$$(strip \
+ #+ prev: v1:    )$$($(1)RULE_TARGET_INTERNAL_VAL_TGTCOMMEOLSTR)$$(strip \
+ #+ prev: v1:   )) $$(strip \
+ #+ prev: v1:   )|| { rm -vf $$(1) ; false ; }$$(strip \
+ #+ prev: v1:   )$$(strip \
+ #+ prev: v1:  ))
  $(1)FUNC_RULE_TARGET_INTERNAL_CMD = $$(strip \
-  $$(info creating file '$$(1)' from $$(strip \
-   )$$(call $(1)FUNC_RULE_TARGET_INTERNAL_GET_SRC_FILES,$$(2)) . . .$$(strip \
+  )echo "creating file '$$(1)' from $$(strip $$(strip \
+    )$$(call $(1)FUNC_RULE_TARGET_INTERNAL_GET_SRC_FILES,$$(2)) . . .$$(strip \
+   ))"$$(strip \
+  ) && $$(strip \
+  )$$(strip \
+  )$$(call CMD_CATALLFILES_SMART,$$(strip \
+   )$$(call $(1)FUNC_RULE_TARGET_INTERNAL_GET_SRC_FILES,$$(2)),$$(strip \
+   )$$(1),$$(strip \
+   )$$($(1)RULE_TARGET_INTERNAL_VAL_OPTS),$$(strip \
+   )$$($(1)RULE_TARGET_INTERNAL_VAL_TGTCOMMEOLSTR)$$(strip \
   ))$$(strip \
-   )$$(call CMD_CATALLFILES_SMART,$$(strip \
-    )$$(call $(1)FUNC_RULE_TARGET_INTERNAL_GET_SRC_FILES,$$(2)),$$(strip \
-    )$$(1),$$(strip \
-    )$$($(1)RULE_TARGET_INTERNAL_VAL_OPTS),$$(strip \
-    )$$($(1)RULE_TARGET_INTERNAL_VAL_TGTCOMMEOLSTR)$$(strip \
-   )) $$(strip \
-   )|| { rm -vf $$(1) ; false ; }$$(strip \
+  ) || { rm -vf $$(1) ; false ; }$$(strip \
    )$$(strip \
-  ))
+  )
 
  $$(t_targetfile): $$(strip $$($$(t_vn_pref)SRC_ALL)) $$(SRC_FILES_COMMON)
 	@$$(call $(1)FUNC_RULE_TARGET_INTERNAL_CMD,$$@,$$+)
@@ -895,6 +1151,8 @@ endef
 
 # }}}
 
+ifeq (new,old)
+
 # by default, our makefile inclusion process uses the automatically detected
 # "common parts" directories, if any.
 MAK_INCLUDEFILES_COMMONANDHOST_PARTS_DIRS ?= $(strip \
@@ -904,15 +1162,6 @@ MAK_INCLUDEFILES_COMMONANDHOST_PARTS_DIRS ?= $(strip \
 # include "make"-configuration files
 #  IDEA: move the macros to expand the wildcard based on the hostname, etc.,
 #  and provide a nice "null" fallback/default file, so no overrides are made.
-#+ prev: v1: $(eval $(call EXPR_CALCFILESCOMMONANDHOST,$(strip \
-#+ prev: v1:  )MAK_INCLUDEFILES_SRC_,$(MAK_MAIN_MAKEFILE)))
-#+ prev: v2: $(eval $(call EXPR_CALCFILESCOMMONANDHOST,$(strip \
-#+ prev: v2:  )MAK_INCLUDEFILES_,$(MAK_MAIN_MAKEFILE)))
-#+/- prev: v3: $(eval $(call EXPR_CALCFILESCOMMONANDHOST,$(strip \
-#+/- prev: v3:  )MAK_INCLUDEFILES_,$(strip \
-#+/- prev: v3:  )$(MAK_MAIN_MAKEFILE),$(strip \
-#+/- prev: v3:  ))$(strip \
-#+/- prev: v3: ))
 $(eval $(call EXPR_CALCFILESCOMMONANDHOST,$(strip \
  )MAK_INCLUDEFILES_,$(strip \
  )$(notdir $(MAK_MAIN_MAKEFILE)),$(strip \
@@ -932,8 +1181,85 @@ endif
 
 include $(MAK_INCLUDEFILES_SRC_ALL)
 
+else
+
+# args:
+# $(1): variables prefix (passed to 'EXPR_CALCFILESCOMMONANDHOST');
+define EXPR_INCLUDEFILES_STEP
+t_incfiles_vn_pref := $$(strip $(1))
+
+# by default, our makefile inclusion process uses the automatically detected
+# "common parts" directories, if any.
+$$(t_incfiles_vn_pref)COMMONANDHOST_PARTS_DIRS ?= $$(strip \
+ $$(ALL_COMMONANDHOST_PARTS_DIRS_DEFAULT) \
+)
+
+# include "make"-configuration files
+#  IDEA: move the macros to expand the wildcard based on the hostname, etc.,
+#  and provide a nice "null" fallback/default file, so no overrides are made.
+$$(eval $$(strip \
+ )$$(call EXPR_CALCFILESCOMMONANDHOST,$$(strip \
+  )$$(t_incfiles_vn_pref),$$(strip \
+  )$$(notdir $$(MAK_MAIN_MAKEFILE)),$$(strip \
+ ))$$(strip \
+))
+
+# include files that have not been processed so far.
+# (in other words, remove the files that have been included already).
+$$(t_incfiles_vn_pref)SRC_ALL := $$(strip $$(strip \
+ )$$(filter-out $$(MAKEFILE_LIST),$$($$(t_incfiles_vn_pref)SRC_ALL))$$(strip \
+))
+
+# every target also depends on the makefiles being included.
+SRC_FILES_COMMON += $$($$(t_incfiles_vn_pref)SRC_ALL)
+
+ifneq ($$(VERBOSE),)
+ $$(info INFO: makefile inclusion: start. varpref='$$(t_incfiles_vn_pref)')
+ $$(info INFO:  current makefile: MAK_THIS_MAKEFILE: '$$(MAK_THIS_MAKEFILE)')
+ $$(info INFO:  main makefile: MAK_MAIN_MAKEFILE: '$$(MAK_MAIN_MAKEFILE)')
+ $$(info INFO:  MAK_THIS_ISDOCKERCOMPOSEMAKE_SUBMAKE: '$$(MAK_THIS_ISDOCKERCOMPOSEMAKE_SUBMAKE)')
+ $$(info INFO:  main makefile for sub-make: MAK_MAIN_MAKEFILE_FORSUBMAKE: '$$(MAK_MAIN_MAKEFILE_FORSUBMAKE)')
+ $$(info INFO:  ALL_TAGIDS_ALL: '$$(ALL_TAGIDS_ALL)')
+ $$(info INFO:  $$(t_incfiles_vn_pref)SRC_ALL (before including other makefiles): '$$($$(t_incfiles_vn_pref)SRC_ALL)')
+endif
+
+include $$($$(t_incfiles_vn_pref)SRC_ALL)
+
+undefine  t_incfiles_vn_pref
+endef
+
+# include files twice, to give makefiles a chance to define a "tagid", for
+# example, and then have files corresponding to the "tagid" being included
+# (and later processed for other targets, too).
+$(foreach vnpref,$(strip $(strip \
+  )MAK_INCLUDEFILES_PRE_ $(strip \
+  )MAK_INCLUDEFILES_POST_ $(strip \
+ )),$(strip \
+ )$(eval $(strip \
+  )$(call EXPR_INCLUDEFILES_STEP,$(vnpref))$(strip \
+ ))$(strip \
+))
+# TESTING: $(error finished early (testing))
+
+endif # old/new implementation
+
+SRC_FILES_COMMON := $(call FUNC_WORDLIST_REMOVEDUPLICATES,$(strip \
+  )$(SRC_FILES_COMMON)$(strip \
+ ))
+
+ALL_SUBMAKE_STD_FORCEBUILD ?= 1
+ifneq ($(filter 1,$(ALL_SUBMAKE_STD_FORCEBUILD)),)
+ ALL_SUBMAKE_STD_EXTRADEPS += submake_std_builddep
+endif
+
+#+ prev: ifneq ($(VERBOSE),)
+#+ prev:  $(info INFO: makefile inclusion: end)
+#+ prev:  $(info INFO:  SRC_FILES_COMMON: '$(SRC_FILES_COMMON)')
+#+ prev: endif
+
 ifneq ($(VERBOSE),)
  $(info INFO: finished including makefiles. MAKEFILE_LIST: '$(MAKEFILE_LIST)')
+ $(info INFO: SRC_FILES_COMMON: '$(SRC_FILES_COMMON)')
 endif
 
 ifneq ($(VERBOSE),)
@@ -968,13 +1294,25 @@ ifneq ($(VERBOSE),)
  $(info ALL_COMMONANDHOST_PARTS_DIRS: '$(ALL_COMMONANDHOST_PARTS_DIRS)')
 endif
 
+# done: allow *all* tagids to be processed (unlike hosts), so:
+#  . refactor current macro(s) to have a flavour where *all* matches for *all*
+#    words are returned;
+#
+#    . ... and refactor the existing FUNC_GETALLFILESFORFIRSTMATCHINGBASENAME to use
+#      those new macros.
+
+# TODO: where "sub-make" files are being specified (non-empty list), we probably don't need to force the 'h' flag.
+#  IDEA: either don't specify it by default, or:
+#  IDEA: ignore it when the "sub-make" list is non-empty, or:
+#  TODO: have a new flag that has that conditional enforcement;
+
 #+ v1: CALCFILESCOMMONANDHOST_OPTIONS_TARGETFILES_DEFAULT ?= h
 #+ v2: CALCFILESCOMMONANDHOST_OPTIONS_TARGETFILES_DEFAULT ?= hAB
 #+ v3: CALCFILESCOMMONANDHOST_OPTIONS_TARGETFILES_DEFAULT := hABv
 ifeq ($(origin CALCFILESCOMMONANDHOST_OPTIONS_TARGETFILES_DEFAULT),undefined)
  CALCFILESCOMMONANDHOST_OPTIONS_TARGETFILES_DEFAULT := ABv
  ifeq ($(MAK_THIS_ISDOCKERCOMPOSEMAKE_SUBMAKE),)
-  CALCFILESCOMMONANDHOST_OPTIONS_TARGETFILES_DEFAULT += h
+  CALCFILESCOMMONANDHOST_OPTIONS_TARGETFILES_DEFAULT += H
  endif
  ifneq ($(VERBOSE),)
   CALCFILESCOMMONANDHOST_OPTIONS_TARGETFILES_DEFAULT += i
@@ -1367,6 +1705,16 @@ endef
  #+ prev: v2:  (
  #+ prev: v2:     )-C $(dir $$@) $(strip \
  #+ prev: v2:  )
+ #? # NOTE: each target will depend on the same makefiles our local targets depend
+ #? # on.  This is to work around the issue where a change in one of the makefiles
+ #? # known to this makefile does not trigger a "remake" on the sub-make.
+ #? # Alternatives such as having the sub-make target being a ".PHONY" target have
+ #? # been discarded (not noticing when the file is absent, for example, is one of
+ #? # the potential issues, along with "making too much" and thus always
+ #? # re-generating the local target file(s).
+ #+?  # ... : (
+ #+?  )$(SRC_FILES_COMMON) $(strip \
+ #+?   )
  $(foreach t_entry,$(strip \
    )$(ALL_SUBMAKE_STD_DATABYDIR_MULTIPLE)$(strip \
   ),$(strip \
@@ -1381,7 +1729,9 @@ endef
      )$(t_entry),$(strip \
      )$(ALL_SUBMAKE_STD_DATABYDIR_FIELDNUM_OURTARGETFILE)$(strip \
     ))$(strip \
-     ) :$(NEWLINE)$(strip \
+     ) : $(strip \
+      )$(ALL_SUBMAKE_STD_EXTRADEPS) $(strip \
+      )$(NEWLINE)$(strip \
      )$(TAB)$(CMD_SUBMAKE_START)$$(MAKE) $(strip \
       )$(call FUNC_GET_SUBMAKE_STD_MAKEOPTS_FORDIR,$(strip \
         $(call FUNC_GET_SUBMAKE_STD_VALUEFROMENTRYFIELDNUM,$(strip \
