@@ -1,0 +1,64 @@
+# symlink to this file to try to add a tagid to $(ALL_TAGIDS_ALL)
+#
+# extract filename from the MAKEFILE_LIST variable.
+#
+# as this file has just been 'include'd, it's the '$(lastword
+# $(MAKEFILE_LIST))'
+#
+# see also: [info make] 6.14 Other Special Variables
+#
+# TODO: refactor code to generic mapping macros
+#
+
+MAK_TOOL_THIS_MAKEFILE_NAME := $(notdir $(lastword $(MAKEFILE_LIST)))
+
+MAK_TOOL_MAPFNAME_PREFIXES_LIST = $(strip \
+ -automapto-tagid- \
+ _automapto_tagid- \
+)
+
+# args:
+# $(1): src value
+# $(2): prefix
+# returns:
+#  * empty string: the prefix was not present in $(1);
+#  * non-empty: the value after (pseudo-wildcard): '*-$(2)'.
+define FUNC_GETSTRFROMLASTPREFIXMATCHTOENDOFID
+$(subst $(TOKEN_NULL),,$(strip \
+ )$(firstword $(strip \
+  )$(subst ., ,$(subst -, ,$(strip \
+   )$(wordlist 2,2,$(strip \
+    )$(subst $(strip \
+      )$(subst $(SPACE),$(TOKEN_SPACE),$(strip \
+       )$(strip $(2))$(strip \
+      )),$(strip \
+      )$(SPACE),$(strip \
+      )$(subst $(SPACE),$(TOKEN_SPACE),$(strip \
+       )$(strip $(1))$(strip \
+       )$(strip $(2))$(TOKEN_NULL)$(strip \
+      ))$(strip \
+    ))$(strip \
+   ))$(strip \
+  )))$(strip \
+ ))$(strip \
+))
+endef
+
+MAK_TOOL_CUR_MAPTO := $(strip \
+)$(firstword $(strip \
+ )$(foreach pref,$(MAK_TOOL_MAPFNAME_PREFIXES_LIST),$(strip \
+  )$(call FUNC_GETSTRFROMLASTPREFIXMATCHTOENDOFID,$(strip \
+   )$(MAK_TOOL_THIS_MAKEFILE_NAME),$(strip \
+   )$(pref)$(strip \
+  ))$(strip \
+ ))$(strip \
+))
+
+# avoid adding a tagid if it's already in the dest list
+ifneq ($(MAK_TOOL_CUR_MAPTO),)
+ifeq ($(filter $(MAK_TOOL_CUR_MAPTO),$(ALL_TAGIDS_ALL)),)
+ ALL_TAGIDS_ALL += $(MAK_TOOL_CUR_MAPTO)
+endif
+endif
+
+# vi: set ts=3 sw=3 autoindent noexpandtab:
