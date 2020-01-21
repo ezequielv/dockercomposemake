@@ -12,11 +12,14 @@
 
 MAK_TOOL_THIS_MAKEFILE_NAME := $(notdir $(lastword $(MAKEFILE_LIST)))
 
-MAK_TOOL_MAPFNAME_PREFIXES_LIST = $(strip \
+ifeq ($(origin MAK_TOOL_MAPFNAME_PREFIXES_LIST),undefined)
+MAK_TOOL_MAPFNAME_PREFIXES_LIST := $(strip \
  -automapto-tagid- \
  _automapto_tagid- \
 )
+endif
 
+ifeq ($(origin FUNC_GETSTRFROMLASTPREFIXMATCHTOENDOFID),undefined)
 # args:
 # $(1): src value
 # $(2): prefix
@@ -43,6 +46,7 @@ $(subst $(TOKEN_NULL),,$(strip \
  ))$(strip \
 ))
 endef
+endif
 
 MAK_TOOL_CUR_MAPTO := $(strip \
 )$(firstword $(strip \
