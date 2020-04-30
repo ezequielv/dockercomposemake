@@ -1,0 +1,1 @@
+--langmap=make:+(GNUmakefile*)([Mm]akefile*)
