@@ -1138,14 +1138,92 @@ $(eval $(strip \
 ))
 endef
 
+#+ prev: v1: # args:
+#+ prev: v1: # $(1): (sub/)dir for the file to be generated in;
+#+ prev: v1: # $(2): partid (usually a 2-digit number);
+#+ prev: v1: define EVAL_MAK_ADD_SUBMAKESTD_ENTRY_DOCKERCOMPOSEYML
+#+ prev: v1: $(call EVAL_MAK_ADD_SUBMAKESTD_ENTRY_FORVARPREF,$(strip \
+#+ prev: v1:  )FILE_DOCKERCOMPOSEYML_,$(strip \
+#+ prev: v1:  )$(1),$(strip \
+#+ prev: v1:  )$(2)$(strip \
+#+ prev: v1: ))
+#+ prev: v1: endef
+
 # args:
-# $(1): (sub/)dir for the file to be generated in;
-# $(2): partid (usually a 2-digit number);
-define EVAL_MAK_ADD_SUBMAKESTD_ENTRY_DOCKERCOMPOSEYML
-$(call EVAL_MAK_ADD_SUBMAKESTD_ENTRY_FORVARPREF,$(strip \
- )FILE_DOCKERCOMPOSEYML_,$(strip \
- )$(1),$(strip \
- )$(2)$(strip \
+#  $(1): a "submake std" variable prefix ('FILE_DOCKERCOMPOSEYML_', 'FILE_ENV_', etc.)
+# returns a "variable id" from a "submake standard" variable prefix.
+# examples: (input) -> (output)
+#  FILE_DOCKERCOMPOSEYML_ -> DOCKERCOMPOSEYML
+#  FILE_ENV_ -> ENV
+define FUNC_MAK_GET_SUBMAKESTD_VARID_FROM_VARPREF
+$(strip $(strip \
+)$(subst $(TOKEN_NULL),,$(strip \
+)$(subst $(TOKEN_NULL)FILE_,$(TOKEN_NULL),$(strip \
+)$(subst _$(TOKEN_NULL),$(TOKEN_NULL),$(strip \
+)$(TOKEN_NULL)$(1)$(TOKEN_NULL)$(strip \
+))$(strip \
+))$(strip \
+))$(strip \
+))
+endef
+
+# TODO: remove testing code
+# ifeq (TESTING,)
+# # DEBUG: $(info var id from var pref: '$(call FUNC_MAK_GET_SUBMAKESTD_VARID_FROM_VARPREF,FILE_DOCKERCOMPOSEYML_)')
+# 
+# $(foreach t_vn_pref,$(strip \
+#   FILE_DOCKERCOMPOSEYML_ \
+#   FILE_ENV_ \
+#  ),$(strip \
+#  )$(info to eval: $(strip \
+#   )EVAL_MAK_ADD_SUBMAKESTD_ENTRY_$(call FUNC_MAK_GET_SUBMAKESTD_VARID_FROM_VARPREF,$(t_vn_pref)) = $(strip \
+#    )$$(call EVAL_MAK_ADD_SUBMAKESTD_ENTRY_FORVARPREF,$(strip \
+# 	 )$(t_vn_pref),$(strip \
+# 	 )$$(1),$(strip \
+# 	 )$$(2)$(strip \
+# 	))$(strip \
+#  ))$(strip \
+# ))
+# 
+# # DEBUG: $(error finishing early)
+# $(error finishing early)
+# 
+# endif
+
+ALL_SUBMAKE_STD_VARNAME_AVAILABLE_PREFS := $(strip \
+  FILE_DOCKERCOMPOSEYML_ \
+  FILE_ENV_ \
+ )
+
+# define macros using 'EVAL_MAK_ADD_SUBMAKESTD_ENTRY_FORVARPREF()'.
+# example macro names created by this code:
+#  * EVAL_MAK_ADD_SUBMAKESTD_ENTRY_DOCKERCOMPOSEYML
+#  * EVAL_MAK_ADD_SUBMAKESTD_ENTRY_ENV
+# for documentation on the args for the generated macros, see 'EVAL_MAK_ADD_SUBMAKESTD_ENTRY_FORVARPREF()'.
+$(foreach t_vn_pref,$(strip \
+  $(ALL_SUBMAKE_STD_VARNAME_AVAILABLE_PREFS) \
+ ),$(strip \
+ )$(eval $(strip \
+  )EVAL_MAK_ADD_SUBMAKESTD_ENTRY_$(call FUNC_MAK_GET_SUBMAKESTD_VARID_FROM_VARPREF,$(t_vn_pref)) = $(strip \
+   )$$(call EVAL_MAK_ADD_SUBMAKESTD_ENTRY_FORVARPREF,$(strip \
+	 )$(t_vn_pref),$(strip \
+	 )$$(1),$(strip \
+	 )$$(2)$(strip \
+	))$(strip \
+ ))$(strip \
+))
+
+# removed: the source list ('$(ALL_SUBMAKE_STD_VARNAME_PREFS)') has not been populated yet
+#- prev: v1: define EVAL_MAK_ADD_SUBMAKESTD_ENTRY_ALL
+#- prev: v1: $(foreach t_vn_pref,$(ALL_SUBMAKE_STD_VARNAME_PREFS),$(strip \
+#- prev: v1:  )$(call EVAL_MAK_ADD_SUBMAKESTD_ENTRY_$(call FUNC_MAK_GET_SUBMAKESTD_VARID_FROM_VARPREF,$(t_vn_pref)),$(1),$(2))$(strip \
+#- prev: v1: ))
+#- prev: v1: endef
+
+# for documentation on the args, see 'EVAL_MAK_ADD_SUBMAKESTD_ENTRY_FORVARPREF()'.
+define EVAL_MAK_ADD_SUBMAKESTD_ENTRY_ALL
+$(foreach t_vn_pref,$(ALL_SUBMAKE_STD_VARNAME_AVAILABLE_PREFS),$(strip \
+ )$(call EVAL_MAK_ADD_SUBMAKESTD_ENTRY_$(call FUNC_MAK_GET_SUBMAKESTD_VARID_FROM_VARPREF,$(t_vn_pref)),$(1),$(2))$(strip \
 ))
 endef
 
