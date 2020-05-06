@@ -905,7 +905,7 @@ endif
 t_tagidsall := $$(strip \
   )$$(call FUNC_TAGMAPPING_EXPANDTAGIDS,$$(strip \
    )$$(ALL_TAGIDS_TAGMAPPING),$$(strip \
-   )$$(t_tagidsall) $$(ALL_TAGIDS_ALL)$$(strip \
+   )$$(t_tagidsall) $$(ALL_TAGIDS_ALL) $$(ALL_TAGIDS_EXTRA)$$(strip \
   ))$$(strip \
  )
 
@@ -1298,6 +1298,7 @@ ifneq ($$(VERBOSE),)
  $$(info INFO:  MAK_THIS_ISDOCKERCOMPOSEMAKE_SUBMAKE: '$$(MAK_THIS_ISDOCKERCOMPOSEMAKE_SUBMAKE)')
  $$(info INFO:  main makefile for sub-make: MAK_MAIN_MAKEFILE_FORSUBMAKE: '$$(MAK_MAIN_MAKEFILE_FORSUBMAKE)')
  $$(info INFO:  ALL_TAGIDS_ALL: '$$(ALL_TAGIDS_ALL)')
+ $$(info INFO:  ALL_TAGIDS_EXTRA: '$$(ALL_TAGIDS_EXTRA)')
  $$(info INFO:  $$(t_incfiles_vn_pref)SRC_ALL (before including other makefiles): '$$($$(t_incfiles_vn_pref)SRC_ALL)')
 endif
 
